@@ -564,6 +564,61 @@ function cebc_build_equips(array $cfg, array $grups)
     return $equips;
 }
 
+/**
+ * Ordena la classificació: punts (desc) -> enfrontament directe entre els empatats
+ * (punts i després diferència) -> diferència de punts general -> punts a favor -> nom.
+ * El CEBC publica la taula sense ordenar; aquí es calcula l'ordre.
+ */
+function cebc_ordena_classificacio(array $cls, array $partits)
+{
+    if (count($cls) < 2) {
+        return $cls;
+    }
+    $pts = [];
+    foreach ($cls as $c) {
+        $pts[(int)$c['punts']][] = $c['equip'];
+    }
+    // Mini-lliga entre equips empatats a punts
+    $h2h = [];
+    foreach ($pts as $p => $noms) {
+        if (count($noms) < 2) {
+            continue;
+        }
+        foreach ($noms as $n) {
+            $h2h[$n] = ['p' => 0, 'd' => 0];
+        }
+        foreach ($partits as $m) {
+            if (!isset($m['gl'], $m['gv']) || $m['gl'] === null || $m['gv'] === null) {
+                continue;
+            }
+            $l = $m['local']; $v = $m['visitant'];
+            if (!in_array($l, $noms, true) || !in_array($v, $noms, true)) {
+                continue;
+            }
+            $gl = (int)$m['gl']; $gv = (int)$m['gv'];
+            $h2h[$l]['d'] += $gl - $gv;
+            $h2h[$v]['d'] += $gv - $gl;
+            if ($gl > $gv) { $h2h[$l]['p'] += 3; $h2h[$v]['p'] += 1; }
+            elseif ($gv > $gl) { $h2h[$v]['p'] += 3; $h2h[$l]['p'] += 1; }
+            else { $h2h[$l]['p'] += 2; $h2h[$v]['p'] += 2; }
+        }
+    }
+    usort($cls, function ($a, $b) use ($h2h) {
+        if ($a['punts'] !== $b['punts']) {
+            return $b['punts'] <=> $a['punts'];
+        }
+        $ha = $h2h[$a['equip']] ?? ['p' => 0, 'd' => 0];
+        $hb = $h2h[$b['equip']] ?? ['p' => 0, 'd' => 0];
+        if ($ha['p'] !== $hb['p']) { return $hb['p'] <=> $ha['p']; }
+        if ($ha['d'] !== $hb['d']) { return $hb['d'] <=> $ha['d']; }
+        $da = $a['gf'] - $a['gc']; $db = $b['gf'] - $b['gc'];
+        if ($da !== $db) { return $db <=> $da; }
+        if ($a['gf'] !== $b['gf']) { return $b['gf'] <=> $a['gf']; }
+        return strcmp($a['equip'], $b['equip']);
+    });
+    return $cls;
+}
+
 function cebc_sort_partits(array &$partits)
 {
     usort($partits, function ($a, $b) {
@@ -892,7 +947,7 @@ function cebc_actualitzar(array $cfg, $dataFile)
             'nom'            => $det['nom'] !== '' ? $det['nom'] : $info['nom'],
             'jornades_total' => $det['jornades_total'],
             'partits'        => $det['partits'],
-            'classificacio'  => $det['classificacio'],
+            'classificacio'  => cebc_ordena_classificacio($det['classificacio'], $det['partits']),
         ];
         $grupsOut[(string)$id] = $g;
         $grupsInfo[] = $g + ['equips_club' => $club];

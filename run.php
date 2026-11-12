@@ -17,6 +17,13 @@ require __DIR__ . "/payload_$app.php";
 
 @mkdir(__DIR__ . '/work', 0755, true);
 @mkdir(__DIR__ . '/out', 0755, true);
+// verd.json se genera junto a agenda.json; si esta vez falla, se conserva el publicado antes
+if ($app === 'agenda' && !is_file(__DIR__ . '/out/verd.json')) {
+    @exec('git show origin/dades:verd.json > ' . escapeshellarg(__DIR__ . '/out/verd.json') . ' 2>/dev/null');
+    if (is_file(__DIR__ . '/out/verd.json') && filesize(__DIR__ . '/out/verd.json') < 50) {
+        @unlink(__DIR__ . '/out/verd.json');
+    }
+}
 $dataFile = __DIR__ . "/work/$app.data.json";
 @unlink($dataFile);
 
@@ -36,3 +43,15 @@ if (empty($payload['meta']['actualitzat'])) {
 }
 file_put_contents(__DIR__ . "/out/$app.json", cebc_json($payload));
 echo "OK · out/$app.json escrito (" . $payload['meta']['actualitzat'] . ")\n";
+
+// Grupo completo del Benjamí Verd (todos los partidos y la clasificación) para la web "Benjamí Verd"
+if ($app === 'agenda') {
+    require __DIR__ . '/payload_verd.php';
+    $pv = verd_payload(cebc_carrega_data($dataFile), $cfg);
+    if (!empty($pv['meta']['actualitzat']) && count($pv['partits']) > 0) {
+        file_put_contents(__DIR__ . '/out/verd.json', cebc_json($pv));
+        echo "OK · out/verd.json escrito (" . count($pv['partits']) . " partidos)\n";
+    } else {
+        echo "AVISO: verd.json sin datos; se conserva el anterior.\n";
+    }
+}

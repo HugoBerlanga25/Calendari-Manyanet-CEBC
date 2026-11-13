@@ -1,0 +1,34 @@
+name: Relevo (mantiene los datos al día)
+
+# GitHub retrasa mucho las tareas programadas (a veces 5-8 horas). Este relevo se activa cada vez que
+# termina "Actualizar datos del CEBC", espera unos minutos y la vuelve a lanzar, de modo que los datos
+# se renuevan de forma continua. La tarea programada de dades.yml queda como arranque de seguridad.
+
+on:
+  workflow_run:
+    workflows: ["Actualizar datos del CEBC"]
+    types: [completed]
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+
+concurrency:
+  group: relleu
+  cancel-in-progress: true
+
+jobs:
+  relleu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Esperar y volver a lanzar la descarga
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          H=$(TZ=Europe/Madrid date +%-H)
+          # de 00:00 a 07:00 basta con una vez por hora; el resto del día, cada 20 minutos aprox.
+          if [ "$H" -lt 7 ]; then ESPERA=3300; else ESPERA=1020; fi
+          echo "Espera de $ESPERA segundos"
+          sleep "$ESPERA"
+          gh workflow run dades.yml --repo "$GITHUB_REPOSITORY" --ref main
